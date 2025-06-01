@@ -1,0 +1,106 @@
+@brace "0.0.1"
+
+//This is a single line comment
+
+/* This is a 
+multi line 
+comment 
+*/
+
+/* Assignment in BRACE is as follows:
+    key = value
+
+    keys must start with a letter (az) and can contain any alphanumeric character. They can not contain spaces, but may contain _ in place of spaces
+ */
+
+property1 = "thisisastring"
+
+/* brace has the following basic data types:
+    strings - must be explicitly quoted, either double quotes (") for single line strings, or triple quotes (""") for multi line string 'blocks'
+    number - unquoted, may be positive or negative. can be a decimal, decimal point is a period (.)
+    boolean - explicit key words true or false
+    null - explicit key word 'null'
+*/
+
+doubleQuoteString = "cant be interpolated"
+stringBlockString = """
+this is a multiline string block
+"""
+integerNumber= 123456789
+negativeNumber = -12345
+decimalNumber = 12345678.46373322
+booleanProp = true
+nullable = null
+
+
+/*
+BRACE files can also have complex types like objects and arrays.
+arrays can only contain data of the same type, but can contain numbers, strings, booleans objects or even other arrays.
+*/
+
+object = {
+    type = 'token'
+    value = 'value'
+}
+
+stringArray = [
+    "string1",
+    "string2",
+    "string3"
+]
+
+
+
+/* 
+Keywords prefixed with an @ are directives.
+Directives are behaviours executed by the brace compiler.
+The directives implementation is modular and flexible, allowing us to easily add and remove directives.
+Below is an example of the 'const' directive. The const directive allows us to declare constants that can be re-used throughout the brace file.
+The const directive accepts an optional namespace, ie
+
+@const "namespace" {
+    ...constants...
+}
+
+If the const directive is called without a namepace it defaults to using the 'global' namepace.
+*/
+
+@const {
+    //APP_VERSION is a constant that exists in the global namespace.
+    APP_VERSION = "0.0.1"
+}
+
+@const "api" {
+    //HOST is a constant in the 'api' namespace 
+    HOST = "localhost"
+}
+
+/*
+    values of constants can be referenced as follows
+*/
+namespaceConst = :api.HOST
+globalConst= :APP_VERSION
+
+
+/* 
+Below is an example of the 'env' directive.
+The env directive allows you to get the value of an environment variable.
+The end directive acceps an optional default value. 
+If a default value is not provided and the environment variable does not exist, the parser should exit with a validation error.
+*/
+@const "database" {
+    HOST = @env("DB_HOST", "localhost")
+    PORT = @env("DB_PORT", 4325)
+    PASSWORD = @env("DB_PASSWORD","password") //If DB_PASSWORD does not exist the brace file is considered un-compileable and the program should exit.
+}
+
+
+#database {
+    host = :database.HOST
+    port = :database.PORT
+}
+
+
+#database.pg {
+    connectionString = "localhost"
+}
