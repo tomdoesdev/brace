@@ -94,55 +94,63 @@ func (p *Parser) parseDirectiveStatement() *ast.DirectiveStatement {
 	// Parse parameters based on directive type
 	switch stmt.Name {
 	case "const":
-		// @const can have optional namespace: @const "namespace" { ... }
-		if p.peekToken.Type == token.STRING {
-			p.nextToken()
-			param := p.parseExpression()
-			if param == nil {
-				p.addError("failed to parse @const namespace")
-				return nil
-			}
-			stmt.Parameters = append(stmt.Parameters, param)
-		}
-
-		if !p.expectPeek(token.LBRACE) {
-			return nil
-		}
-
-		objLiteral := p.parseObjectLiteral()
-		if objLiteral == nil {
-			p.addError("failed to parse @const body")
-			return nil
-		}
-
-		if obj, ok := objLiteral.(*ast.ObjectLiteral); ok {
-			stmt.Body = obj
-		} else {
-			p.addError("@const body must be an object")
-			return nil
-		}
-
+		return p.parseConstDirective(stmt)
 	case "env":
-		// @env("VAR_NAME") or @env("VAR_NAME", default) - this shouldn't be a statement
 		p.addError("@env directive cannot be used as a statement, only as an expression")
 		return nil
-
 	case "brace":
-		// @brace "version"
-		if !p.expectPeek(token.STRING) {
-			return nil
-		}
-		param := p.parseExpression()
-		if param == nil {
-			p.addError("failed to parse @brace version")
-			return nil
-		}
-		stmt.Parameters = append(stmt.Parameters, param)
-
+		return p.parseBraceDirective(stmt)
 	default:
 		p.addError(fmt.Sprintf("unknown directive: %s", stmt.Name))
 		return nil
 	}
+}
+
+// parseConstDirective parses @const directive statements
+func (p *Parser) parseConstDirective(stmt *ast.DirectiveStatement) *ast.DirectiveStatement {
+	// @const can have optional namespace: @const "namespace" { ... }
+	if p.peekToken.Type == token.STRING {
+		p.nextToken()
+		param := p.parseExpression()
+		if param == nil {
+			p.addError("failed to parse @const namespace")
+			return nil
+		}
+		stmt.Parameters = append(stmt.Parameters, param)
+	}
+
+	if !p.expectPeek(token.LBRACE) {
+		return nil
+	}
+
+	objLiteral := p.parseObjectLiteral()
+	if objLiteral == nil {
+		p.addError("failed to parse @const body")
+		return nil
+	}
+
+	if obj, ok := objLiteral.(*ast.ObjectLiteral); ok {
+		stmt.Body = obj
+	} else {
+		p.addError("@const body must be an object")
+		return nil
+	}
+
+	return stmt
+}
+
+// parseBraceDirective parses @brace directive statements
+func (p *Parser) parseBraceDirective(stmt *ast.DirectiveStatement) *ast.DirectiveStatement {
+	// @brace "version"
+	if !p.expectPeek(token.STRING) {
+		return nil
+	}
+	param := p.parseExpression()
+	if param == nil {
+		p.addError("failed to parse @brace version")
+		return nil
+	}
+	stmt.Parameters = append(stmt.Parameters, param)
 
 	return stmt
 }
@@ -346,65 +354,8 @@ func (p *Parser) parseObjectLiteral() ast.Expression {
 
 	p.nextToken()
 
-	// Parse key = value pairs, skipping comments
-	for {
-		// Skip any comments inside the object
-		for p.curToken.Type == token.COMMENT {
-			p.nextToken()
-			if p.curToken.Type == token.RBRACE {
-				break
-			}
-		}
-
-		// Check if we've hit the end
-		if p.curToken.Type == token.RBRACE {
-			break
-		}
-
-		key := p.parseExpression()
-		if key == nil {
-			p.addError("failed to parse object key")
-			return nil
-		}
-
-		if !p.expectPeek(token.ASSIGN) {
-			return nil
-		}
-
-		p.nextToken()
-		value := p.parseExpression()
-		if value == nil {
-			p.addError("failed to parse object value")
-			return nil
-		}
-
-		obj.Pairs[key] = value
-
-		// Skip any trailing comments after the value
-		for p.peekToken.Type == token.COMMENT {
-			p.nextToken()
-		}
-
-		// Handle optional commas or just move to next key
-		if p.peekToken.Type == token.COMMA {
-			p.nextToken() // consume comma
-			if p.peekToken.Type == token.RBRACE {
-				break // trailing comma case
-			}
-			p.nextToken() // move to next key
-		} else if p.peekToken.Type == token.RBRACE {
-			break // end of object
-		} else if p.peekToken.Type == token.IDENT {
-			// No comma, but we have another identifier (another key)
-			p.nextToken() // move to next key
-		} else if p.peekToken.Type == token.COMMENT {
-			// Comment followed by more content
-			p.nextToken() // move to comment
-			continue      // let the loop handle the comment
-		} else {
-			// Unexpected token
-			break
-		}
+	if !p.parseObjectPairs(obj) {
+		return nil
 	}
 
 	if !p.expectPeek(token.RBRACE) {
@@ -412,6 +363,90 @@ func (p *Parser) parseObjectLiteral() ast.Expression {
 	}
 
 	return obj
+}
+
+// parseObjectPairs parses all key-value pairs in an object literal
+func (p *Parser) parseObjectPairs(obj *ast.ObjectLiteral) bool {
+	for {
+		p.skipCommentsInObject()
+
+		if p.curToken.Type == token.RBRACE {
+			break
+		}
+
+		if !p.parseObjectPair(obj) {
+			return false
+		}
+
+		p.skipTrailingComments()
+
+		if !p.handleObjectSeparators() {
+			break
+		}
+	}
+	return true
+}
+
+// parseObjectPair parses a single key-value pair in an object literal
+func (p *Parser) parseObjectPair(obj *ast.ObjectLiteral) bool {
+	key := p.parseExpression()
+	if key == nil {
+		p.addError("failed to parse object key")
+		return false
+	}
+
+	if !p.expectPeek(token.ASSIGN) {
+		return false
+	}
+
+	p.nextToken()
+	value := p.parseExpression()
+	if value == nil {
+		p.addError("failed to parse object value")
+		return false
+	}
+
+	obj.Pairs[key] = value
+	return true
+}
+
+// skipCommentsInObject skips any comments inside the object
+func (p *Parser) skipCommentsInObject() {
+	for p.curToken.Type == token.COMMENT {
+		p.nextToken()
+		if p.curToken.Type == token.RBRACE {
+			break
+		}
+	}
+}
+
+// skipTrailingComments skips any trailing comments after a value
+func (p *Parser) skipTrailingComments() {
+	for p.peekToken.Type == token.COMMENT {
+		p.nextToken()
+	}
+}
+
+// handleObjectSeparators handles commas and other separators between object pairs
+func (p *Parser) handleObjectSeparators() bool {
+	switch p.peekToken.Type {
+	case token.COMMA:
+		p.nextToken() // consume comma
+		if p.peekToken.Type == token.RBRACE {
+			return false // trailing comma case
+		}
+		p.nextToken() // move to next key
+		return true
+	case token.RBRACE:
+		return false // end of object
+	case token.IDENT, token.COMMENT:
+		// No comma, but we have another identifier (another key) or a comment to skip
+		p.nextToken() // move to next key or comment (will be handled by skipCommentsInObject)
+		return true
+	default:
+		// Unexpected token
+		return false
+	}
 }
 
 // parseReference parses constant references like :namespace.CONSTANT

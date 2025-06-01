@@ -47,8 +47,6 @@ func (l *Lexer) readChar() {
 
 // NextToken scans the input and returns the next token with position info
 func (l *Lexer) NextToken() token.Token {
-	var tok token.Token
-
 	l.skipWhitespace()
 
 	// Store position info for the token
@@ -56,89 +54,108 @@ func (l *Lexer) NextToken() token.Token {
 	startColumn := l.column
 	startPosition := l.position
 
+	tok := l.scanToken(startLine, startColumn, startPosition)
+
+	if tok.Type != token.IDENT && tok.Type != token.NUMBER {
+		l.readChar()
+	}
+	return tok
+}
+
+// scanToken handles the main token scanning logic
+func (l *Lexer) scanToken(startLine, startColumn, startPosition int) token.Token {
 	switch l.ch {
 	case '=':
-		tok = l.createToken(token.ASSIGN, string(l.ch), startLine, startColumn, startPosition, 1)
+		return l.createToken(token.ASSIGN, string(l.ch), startLine, startColumn, startPosition, 1)
 	case ':':
-		tok = l.createToken(token.COLON, string(l.ch), startLine, startColumn, startPosition, 1)
+		return l.createToken(token.COLON, string(l.ch), startLine, startColumn, startPosition, 1)
 	case ',':
-		tok = l.createToken(token.COMMA, string(l.ch), startLine, startColumn, startPosition, 1)
+		return l.createToken(token.COMMA, string(l.ch), startLine, startColumn, startPosition, 1)
 	case ';':
-		tok = l.createToken(token.SEMICOLON, string(l.ch), startLine, startColumn, startPosition, 1)
+		return l.createToken(token.SEMICOLON, string(l.ch), startLine, startColumn, startPosition, 1)
 	case '(':
-		tok = l.createToken(token.LPAREN, string(l.ch), startLine, startColumn, startPosition, 1)
+		return l.createToken(token.LPAREN, string(l.ch), startLine, startColumn, startPosition, 1)
 	case ')':
-		tok = l.createToken(token.RPAREN, string(l.ch), startLine, startColumn, startPosition, 1)
+		return l.createToken(token.RPAREN, string(l.ch), startLine, startColumn, startPosition, 1)
 	case '{':
-		tok = l.createToken(token.LBRACE, string(l.ch), startLine, startColumn, startPosition, 1)
+		return l.createToken(token.LBRACE, string(l.ch), startLine, startColumn, startPosition, 1)
 	case '}':
-		tok = l.createToken(token.RBRACE, string(l.ch), startLine, startColumn, startPosition, 1)
+		return l.createToken(token.RBRACE, string(l.ch), startLine, startColumn, startPosition, 1)
 	case '[':
-		tok = l.createToken(token.LBRACKET, string(l.ch), startLine, startColumn, startPosition, 1)
+		return l.createToken(token.LBRACKET, string(l.ch), startLine, startColumn, startPosition, 1)
 	case ']':
-		tok = l.createToken(token.RBRACKET, string(l.ch), startLine, startColumn, startPosition, 1)
+		return l.createToken(token.RBRACKET, string(l.ch), startLine, startColumn, startPosition, 1)
 	case '@':
-		tok = l.createToken(token.AT, string(l.ch), startLine, startColumn, startPosition, 1)
+		return l.createToken(token.AT, string(l.ch), startLine, startColumn, startPosition, 1)
 	case '#':
-		tok = l.createToken(token.HASH, string(l.ch), startLine, startColumn, startPosition, 1)
+		return l.createToken(token.HASH, string(l.ch), startLine, startColumn, startPosition, 1)
 	case '.':
-		tok = l.createToken(token.DOT, string(l.ch), startLine, startColumn, startPosition, 1)
+		return l.createToken(token.DOT, string(l.ch), startLine, startColumn, startPosition, 1)
 	case '"':
-		// Handle both regular strings and triple-quoted strings
-		if l.peekChar() == '"' && l.peekCharAt(2) == '"' {
-			literal := l.readTripleQuotedString()
-			length := l.position - startPosition
-			tok = l.createToken(token.STRING, literal, startLine, startColumn, startPosition, length)
-		} else {
-			literal := l.readString()
-			length := l.position - startPosition + 1 // +1 for closing quote
-			tok = l.createToken(token.STRING, literal, startLine, startColumn, startPosition, length)
-		}
+		return l.handleStringToken(startLine, startColumn, startPosition)
 	case '\'':
-		// Handle single-quoted strings
-		literal := l.readSingleQuotedString()
-		length := l.position - startPosition + 1
-		tok = l.createToken(token.STRING, literal, startLine, startColumn, startPosition, length)
+		return l.handleSingleQuotedStringToken(startLine, startColumn, startPosition)
 	case '/':
-		// Handle comments
-		if l.peekChar() == '/' {
-			literal := l.readSingleLineComment()
-			length := l.position - startPosition
-			tok = l.createToken(token.COMMENT, literal, startLine, startColumn, startPosition, length)
-		} else if l.peekChar() == '*' {
-			literal := l.readMultiLineComment()
-			length := l.position - startPosition
-			tok = l.createToken(token.COMMENT, literal, startLine, startColumn, startPosition, length)
-		} else {
-			tok = l.createToken(token.ILLEGAL, string(l.ch), startLine, startColumn, startPosition, 1)
-		}
+		return l.handleSlashToken(startLine, startColumn, startPosition)
 	case 0:
-		tok = l.createToken(token.EOF, "", startLine, startColumn, startPosition, 0)
+		return l.createToken(token.EOF, "", startLine, startColumn, startPosition, 0)
 	default:
-		if isLetter(l.ch) {
-			literal := l.readIdentifier()
-			length := len(literal)
-			tokenType := lookupIdent(literal)
-			tok = l.createToken(tokenType, literal, startLine, startColumn, startPosition, length)
-			// Don't call readChar() here because readIdentifier() already advanced
-			return tok
-		} else if isDigit(l.ch) || (l.ch == '-' && isDigit(l.peekChar())) {
-			literal := l.readNumber()
-			length := len(literal)
-			tok = l.createToken(token.NUMBER, literal, startLine, startColumn, startPosition, length)
-			return tok
-		} else {
-			// Create a more descriptive error message for unknown characters
-			charDesc := fmt.Sprintf("'%c' (0x%02x)", l.ch, l.ch)
-			if l.ch < 32 || l.ch > 126 {
-				charDesc = fmt.Sprintf("\\x%02x", l.ch)
-			}
-			tok = l.createToken(token.ILLEGAL, fmt.Sprintf("unexpected character %s", charDesc), startLine, startColumn, startPosition, 1)
-		}
+		return l.handleDefaultToken(startLine, startColumn, startPosition)
 	}
+}
 
-	l.readChar()
-	return tok
+// handleStringToken handles double-quoted string tokens
+func (l *Lexer) handleStringToken(startLine, startColumn, startPosition int) token.Token {
+	if l.peekChar() == '"' && l.peekCharAt(2) == '"' {
+		literal := l.readTripleQuotedString()
+		length := l.position - startPosition
+		return l.createToken(token.STRING, literal, startLine, startColumn, startPosition, length)
+	}
+	literal := l.readString()
+	length := l.position - startPosition + 1
+	return l.createToken(token.STRING, literal, startLine, startColumn, startPosition, length)
+}
+
+// handleSingleQuotedStringToken handles single-quoted string tokens
+func (l *Lexer) handleSingleQuotedStringToken(startLine, startColumn, startPosition int) token.Token {
+	literal := l.readSingleQuotedString()
+	length := l.position - startPosition + 1
+	return l.createToken(token.STRING, literal, startLine, startColumn, startPosition, length)
+}
+
+// handleSlashToken handles slash tokens (comments or illegal)
+func (l *Lexer) handleSlashToken(startLine, startColumn, startPosition int) token.Token {
+	if l.peekChar() == '/' {
+		literal := l.readSingleLineComment()
+		length := l.position - startPosition
+		return l.createToken(token.COMMENT, literal, startLine, startColumn, startPosition, length)
+	}
+	if l.peekChar() == '*' {
+		literal := l.readMultiLineComment()
+		length := l.position - startPosition
+		return l.createToken(token.COMMENT, literal, startLine, startColumn, startPosition, length)
+	}
+	return l.createToken(token.ILLEGAL, string(l.ch), startLine, startColumn, startPosition, 1)
+}
+
+// handleDefaultToken handles identifiers, numbers, and illegal characters
+func (l *Lexer) handleDefaultToken(startLine, startColumn, startPosition int) token.Token {
+	if isLetter(l.ch) {
+		literal := l.readIdentifier()
+		length := len(literal)
+		tokenType := lookupIdent(literal)
+		return l.createToken(tokenType, literal, startLine, startColumn, startPosition, length)
+	}
+	if isDigit(l.ch) || (l.ch == '-' && isDigit(l.peekChar())) {
+		literal := l.readNumber()
+		length := len(literal)
+		return l.createToken(token.NUMBER, literal, startLine, startColumn, startPosition, length)
+	}
+	charDesc := fmt.Sprintf("'%c' (0x%02x)", l.ch, l.ch)
+	if l.ch < 32 || l.ch > 126 {
+		charDesc = fmt.Sprintf("\\x%02x", l.ch)
+	}
+	return l.createToken(token.ILLEGAL, fmt.Sprintf("unexpected character %s", charDesc), startLine, startColumn, startPosition, 1)
 }
 
 // createToken is a helper to create tokens with position info
@@ -319,15 +336,4 @@ func lookupIdent(ident string) token.TokenType {
 	default:
 		return token.IDENT
 	}
-}
-
-// Add this method to help debug unknown characters
-func (l *Lexer) debugChar() string {
-	if l.ch == 0 {
-		return "EOF"
-	}
-	if l.ch < 32 || l.ch > 126 {
-		return fmt.Sprintf("\\x%02x", l.ch)
-	}
-	return string(l.ch)
 }

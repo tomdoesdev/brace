@@ -45,8 +45,7 @@ func (c *Compiler) compileWithFilename(source, filename string) (string, error) 
 	a := analyzer.New()
 	err := a.Analyze(program)
 	if err != nil {
-		// TODO: Enhance analyzer error reporting too
-		return "", fmt.Errorf("analysis error: %v", err)
+		return "", fmt.Errorf("semantic analysis error: %v", err)
 	}
 
 	// Phase 4: Code Generation

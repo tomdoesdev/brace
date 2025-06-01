@@ -31,7 +31,7 @@ func TestSimpleTable(t *testing.T) {
 }`
 
 	l := lexer.New(source)
-	p := New(l)
+	p := New(l, "", "")
 	program := p.ParseProgram()
 
 	if len(p.Errors()) > 0 {
