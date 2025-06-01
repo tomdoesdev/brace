@@ -92,6 +92,23 @@ func (er *ErrorReporter) ReportMultipleErrors(errors []CompilerError) string {
 	return result.String()
 }
 
+// ReportBraceFileError provides specific guidance for @brace directive errors
+func (er *ErrorReporter) ReportBraceFileError(message string) string {
+	var result strings.Builder
+
+	result.WriteString(fmt.Sprintf("error: %s\n", message))
+	result.WriteString("   |\n")
+	result.WriteString("   = help: BRACE files must start with a @brace directive specifying the file format version\n")
+	result.WriteString("   = example: @brace \"1.0.0\"\n")
+	result.WriteString("   |\n")
+	result.WriteString("   Supported versions:\n")
+	result.WriteString("   - \"0.0.1\" (legacy)\n")
+	result.WriteString("   - \"1.0.0\" (current)\n")
+	result.WriteString("   |\n")
+
+	return result.String()
+}
+
 func isWhitespace(ch byte) bool {
 	return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r'
 }

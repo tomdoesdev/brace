@@ -48,9 +48,50 @@ func (p *Parser) ParseProgram() *ast.Program {
 	program := &ast.Program{}
 	program.Statements = []ast.Statement{}
 
-	// Parse until we reach EOF
+	// Skip any leading comments
+	for p.curToken.Type == token.COMMENT {
+		p.nextToken()
+	}
+
+	// Check if file is empty
+	if p.curToken.Type == token.EOF {
+		p.addBraceDirectiveError("empty BRACE file - must start with @brace directive")
+		return program
+	}
+
+	// First non-comment statement MUST be @brace directive
+	if p.curToken.Type != token.AT {
+		p.addBraceDirectiveError("BRACE file must start with @brace directive")
+		return program
+	}
+
+	// Parse the first statement and verify it's @brace
+	firstStmt := p.parseStatement()
+	if directive, ok := firstStmt.(*ast.DirectiveStatement); ok {
+		if directive.Name != "brace" {
+			p.addError(fmt.Sprintf("first directive must be @brace, got @%s", directive.Name))
+			return program
+		}
+		// Validate @brace directive has exactly one string parameter (version)
+		if len(directive.Parameters) != 1 {
+			p.addError("@brace directive requires exactly one version parameter")
+			return program
+		}
+		if _, ok := directive.Parameters[0].(*ast.StringLiteral); !ok {
+			p.addError("@brace version must be a string literal")
+			return program
+		}
+	} else {
+		p.addError("first statement must be @brace directive")
+		return program
+	}
+
+	program.Statements = append(program.Statements, firstStmt)
+	p.nextToken()
+
+	// Parse the rest of the file normally
 	for p.curToken.Type != token.EOF {
-		// Skip comments - they don't contribute to the AST
+		// Skip comments
 		if p.curToken.Type == token.COMMENT {
 			p.nextToken()
 			continue
@@ -204,6 +245,8 @@ func (p *Parser) parseExpression() ast.Expression {
 	case token.ILLEGAL:
 		p.addError(fmt.Sprintf("illegal token: %s", p.curToken.Literal))
 		return nil
+	case token.TEMPLATE_STRING:
+		return p.parseTemplateStringLiteral()
 	default:
 		p.addError(fmt.Sprintf("no parse function for %s found", p.curToken.Type))
 		return nil
@@ -551,4 +594,171 @@ func (p *Parser) Errors() []string {
 // GetDetailedErrors returns the raw error objects for more detailed handling
 func (p *Parser) GetDetailedErrors() []errors.CompilerError {
 	return p.errors
+}
+
+// addBraceDirectiveError adds a specific error for @brace directive issues
+func (p *Parser) addBraceDirectiveError(msg string) {
+	// Use the enhanced error reporter for @brace specific errors
+	if p.errorReporter != nil {
+		formattedError := p.errorReporter.ReportBraceFileError(msg)
+		err := errors.CompilerError{
+			Message:  formattedError,
+			Line:     p.curToken.Line,
+			Column:   p.curToken.Column,
+			Source:   "",
+			Filename: "",
+		}
+		p.errors = append(p.errors, err)
+	} else {
+		p.addError(msg)
+	}
+}
+
+// parseTemplateStringLiteral parses template strings with interpolation
+func (p *Parser) parseTemplateStringLiteral() ast.Expression {
+	template := &ast.TemplateStringLiteral{Token: p.curToken, Value: p.curToken.Literal}
+
+	// Parse the template string for ${...} expressions
+	template.Parts = p.parseTemplateStringParts(p.curToken.Literal)
+
+	return template
+}
+
+// parseTemplateStringParts breaks down template string into literal and expression parts
+func (p *Parser) parseTemplateStringParts(template string) []ast.TemplateStringPart {
+	var parts []ast.TemplateStringPart
+
+	i := 0
+	for i < len(template) {
+		// Find next ${
+		start := strings.Index(template[i:], "${")
+		if start == -1 {
+			// No more interpolations, rest is literal
+			if i < len(template) {
+				parts = append(parts, ast.TemplateStringPart{
+					IsLiteral: true,
+					Content:   template[i:],
+				})
+			}
+			break
+		}
+
+		// Add literal part before interpolation
+		if start > 0 {
+			parts = append(parts, ast.TemplateStringPart{
+				IsLiteral: true,
+				Content:   template[i : i+start],
+			})
+		}
+
+		// Find closing }
+		i += start + 2 // Skip ${
+		end := strings.Index(template[i:], "}")
+		if end == -1 {
+			p.addError("unclosed interpolation in template string")
+			break
+		}
+
+		// Parse the expression inside ${}
+		exprContent := template[i : i+end]
+		expr := p.parseInterpolationExpression(exprContent)
+
+		parts = append(parts, ast.TemplateStringPart{
+			IsLiteral: false,
+			Content:   exprContent,
+			Expr:      expr,
+		})
+
+		i += end + 1 // Skip }
+	}
+
+	return parts
+}
+
+// parseInterpolationExpression parses an expression from a string (used in template string interpolation)
+func (p *Parser) parseInterpolationExpression(content string) ast.Expression {
+	// Create a mini-lexer for the interpolation content
+	// We need to handle references like ":database.HOST" inside ${...}
+
+	content = strings.TrimSpace(content)
+
+	// Handle reference expressions that start with ":"
+	if strings.HasPrefix(content, ":") {
+		// This is a reference - parse it manually
+		refContent := content[1:] // Remove the ":"
+
+		var namespace, name string
+		if dotIndex := strings.Index(refContent, "."); dotIndex != -1 {
+			namespace = refContent[:dotIndex]
+			name = refContent[dotIndex+1:]
+		} else {
+			namespace = ""
+			name = refContent
+		}
+
+		return &ast.Reference{
+			Token:     token.Token{Type: token.COLON, Literal: ":"},
+			Namespace: namespace,
+			Name:      name,
+		}
+	}
+
+	// Handle simple identifiers
+	if isValidIdentifier(content) {
+		return &ast.Identifier{
+			Token: token.Token{Type: token.IDENT, Literal: content},
+			Value: content,
+		}
+	}
+
+	// Handle string literals
+	if strings.HasPrefix(content, "\"") && strings.HasSuffix(content, "\"") {
+		unquoted := content[1 : len(content)-1]
+		return &ast.StringLiteral{
+			Token: token.Token{Type: token.STRING, Literal: content},
+			Value: unquoted,
+		}
+	}
+
+	// Handle numbers
+	if num, err := strconv.ParseFloat(content, 64); err == nil {
+		return &ast.NumberLiteral{
+			Token: token.Token{Type: token.NUMBER, Literal: content},
+			Value: num,
+		}
+	}
+
+	// Default: treat as identifier
+	return &ast.Identifier{
+		Token: token.Token{Type: token.IDENT, Literal: content},
+		Value: content,
+	}
+}
+
+// Helper function to validate identifiers
+func isValidIdentifier(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+
+	if !isLetter(byte(s[0])) && s[0] != '_' {
+		return false
+	}
+
+	for i := 1; i < len(s); i++ {
+		if !isLetter(byte(s[i])) && !isDigit(byte(s[i])) && s[i] != '_' {
+			return false
+		}
+	}
+
+	return true
+}
+
+// Helper functions (if not already defined)
+func isLetter(ch byte) bool {
+	return 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z' || ch == '_'
+}
+
+func isDigit(ch byte) bool {
+	return '0' <= ch && ch <= '9'
 }

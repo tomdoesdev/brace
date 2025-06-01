@@ -51,7 +51,7 @@ type AssignmentStatement struct {
 	Value Expression
 }
 
-func (as *AssignmentStatement) statementNode() { /* marker method for Statement interface */ }
+func (as *AssignmentStatement) statementNode()       { /* marker method for Statement interface */ }
 func (as *AssignmentStatement) TokenLiteral() string { return as.Token.Literal }
 func (as *AssignmentStatement) String() string {
 	return as.Name.String() + " = " + as.Value.String()
@@ -65,7 +65,7 @@ type DirectiveStatement struct {
 	Body       *ObjectLiteral
 }
 
-func (ds *DirectiveStatement) statementNode() { /* marker method for Statement interface */ }
+func (ds *DirectiveStatement) statementNode()       { /* marker method for Statement interface */ }
 func (ds *DirectiveStatement) TokenLiteral() string { return ds.Token.Literal }
 func (ds *DirectiveStatement) String() string {
 	return "@" + ds.Name
@@ -79,7 +79,7 @@ type EnvDirective struct {
 	ResolvedValue interface{} // resolved value after analysis
 }
 
-func (ed *EnvDirective) expressionNode() { /* marker method for Expression interface */ }
+func (ed *EnvDirective) expressionNode()      { /* marker method for Expression interface */ }
 func (ed *EnvDirective) TokenLiteral() string { return ed.Token.Literal }
 func (ed *EnvDirective) String() string {
 	if ed.DefaultValue != nil {
@@ -95,7 +95,7 @@ type TableStatement struct {
 	Body  *ObjectLiteral
 }
 
-func (ts *TableStatement) statementNode() { /* marker method for Statement interface */ }
+func (ts *TableStatement) statementNode()       { /* marker method for Statement interface */ }
 func (ts *TableStatement) TokenLiteral() string { return ts.Token.Literal }
 func (ts *TableStatement) String() string {
 	return "#" + ts.Path[0]
@@ -107,7 +107,7 @@ type Identifier struct {
 	Value string
 }
 
-func (i *Identifier) expressionNode() { /* marker method for Expression interface */ }
+func (i *Identifier) expressionNode()      { /* marker method for Expression interface */ }
 func (i *Identifier) TokenLiteral() string { return i.Token.Literal }
 func (i *Identifier) String() string       { return i.Value }
 
@@ -117,7 +117,7 @@ type StringLiteral struct {
 	Value string
 }
 
-func (sl *StringLiteral) expressionNode() { /* marker method for Expression interface */ }
+func (sl *StringLiteral) expressionNode()      { /* marker method for Expression interface */ }
 func (sl *StringLiteral) TokenLiteral() string { return sl.Token.Literal }
 func (sl *StringLiteral) String() string       { return "\"" + sl.Value + "\"" }
 
@@ -127,7 +127,7 @@ type NumberLiteral struct {
 	Value interface{} // int64 or float64
 }
 
-func (nl *NumberLiteral) expressionNode() { /* marker method for Expression interface */ }
+func (nl *NumberLiteral) expressionNode()      { /* marker method for Expression interface */ }
 func (nl *NumberLiteral) TokenLiteral() string { return nl.Token.Literal }
 func (nl *NumberLiteral) String() string       { return nl.Token.Literal }
 
@@ -137,7 +137,7 @@ type BooleanLiteral struct {
 	Value bool
 }
 
-func (bl *BooleanLiteral) expressionNode() { /* marker method for Expression interface */ }
+func (bl *BooleanLiteral) expressionNode()      { /* marker method for Expression interface */ }
 func (bl *BooleanLiteral) TokenLiteral() string { return bl.Token.Literal }
 func (bl *BooleanLiteral) String() string       { return bl.Token.Literal }
 
@@ -146,7 +146,7 @@ type NullLiteral struct {
 	Token token.Token
 }
 
-func (nl *NullLiteral) expressionNode() { /* marker method for Expression interface */ }
+func (nl *NullLiteral) expressionNode()      { /* marker method for Expression interface */ }
 func (nl *NullLiteral) TokenLiteral() string { return nl.Token.Literal }
 func (nl *NullLiteral) String() string       { return "null" }
 
@@ -156,7 +156,7 @@ type ArrayLiteral struct {
 	Elements []Expression
 }
 
-func (al *ArrayLiteral) expressionNode() { /* marker method for Expression interface */ }
+func (al *ArrayLiteral) expressionNode()      { /* marker method for Expression interface */ }
 func (al *ArrayLiteral) TokenLiteral() string { return al.Token.Literal }
 func (al *ArrayLiteral) String() string       { return "[...]" }
 
@@ -166,7 +166,7 @@ type ObjectLiteral struct {
 	Pairs map[Expression]Expression
 }
 
-func (ol *ObjectLiteral) expressionNode() { /* marker method for Expression interface */ }
+func (ol *ObjectLiteral) expressionNode()      { /* marker method for Expression interface */ }
 func (ol *ObjectLiteral) TokenLiteral() string { return ol.Token.Literal }
 func (ol *ObjectLiteral) String() string       { return "{...}" }
 
@@ -178,7 +178,7 @@ type Reference struct {
 	ResolvedValue interface{} // resolved value after analysis
 }
 
-func (r *Reference) expressionNode() { /* marker method for Expression interface */ }
+func (r *Reference) expressionNode()      { /* marker method for Expression interface */ }
 func (r *Reference) TokenLiteral() string { return r.Token.Literal }
 func (r *Reference) String() string {
 	if r.Namespace != "" {
@@ -186,3 +186,20 @@ func (r *Reference) String() string {
 	}
 	return ":" + r.Name
 }
+
+// TemplateStringLiteral represents template strings with interpolation
+type TemplateStringLiteral struct {
+	Token token.Token
+	Value string               // raw template string with ${...} placeholders
+	Parts []TemplateStringPart // parsed parts for evaluation
+}
+
+type TemplateStringPart struct {
+	IsLiteral bool
+	Content   string     // literal text or expression content
+	Expr      Expression // parsed expression for interpolation
+}
+
+func (tsl *TemplateStringLiteral) expressionNode()      {}
+func (tsl *TemplateStringLiteral) TokenLiteral() string { return tsl.Token.Literal }
+func (tsl *TemplateStringLiteral) String() string       { return "`" + tsl.Value + "`" }

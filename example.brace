@@ -1,9 +1,56 @@
-@brace "1.0.0"
+@brace "0.0.1"
 
-@const "database" {
-    HOST=@env("PATH")
+/**
+    This is an example of how k8s YAML could be written in BRACE.
+    The original YAML was:
+
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+        name: admin-user
+    roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: cluster-admin
+    subjects:
+    - kind: ServiceAccount
+      name: admin-user
+      namespace: kubernetes-dashboard
+**/
+
+@const "kind" {
+    ClusterRoleBinding = "ClusterRoleBinding"
+    ClusterRole = "ClusterRole"
+    ServiceAccount = "ServiceAccount"
 }
 
-#database {
-    host=@env("PATH")
+@const "rbac" {
+    Namespace = "rbac.authorization.k8s.io"
 }
+
+apiVersion = `${:rbac.Namespace}/v1` //Example of tempalte strings
+
+kind = :kind.ClusterRoleBinding
+
+metadata = {
+    name = "admin-user"
+}
+
+roleRef = {
+    apiGroup = :rbac.Namespace
+    kind = :kind.ClusterRole
+    name = "cluster-admin"
+}
+
+subjects = [
+    {
+        kind = :kind.ServiceAccount
+        name = "admin-user"
+        namespace = "kubernetes-dashboard"
+    },
+     {
+        kind = :kind.ServiceAccount
+        name = @env("USER") //Example of using env vars in config
+        namespace = "kubernetes-dashboard"
+    }
+]

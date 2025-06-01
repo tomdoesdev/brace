@@ -95,6 +95,8 @@ func (l *Lexer) scanToken(startLine, startColumn, startPosition int) token.Token
 		return l.handleStringToken(startLine, startColumn, startPosition)
 	case '\'':
 		return l.handleSingleQuotedStringToken(startLine, startColumn, startPosition)
+	case '`':
+		return l.handleTemplateStringToken(startLine, startColumn, startPosition)
 	case '/':
 		return l.handleSlashToken(startLine, startColumn, startPosition)
 	case 0:
@@ -121,6 +123,13 @@ func (l *Lexer) handleSingleQuotedStringToken(startLine, startColumn, startPosit
 	literal := l.readSingleQuotedString()
 	length := l.position - startPosition + 1
 	return l.createToken(token.STRING, literal, startLine, startColumn, startPosition, length)
+}
+
+// handleTemplateStringToken handles backtick-quoted template string tokens
+func (l *Lexer) handleTemplateStringToken(startLine, startColumn, startPosition int) token.Token {
+	literal := l.readTemplateString()
+	length := l.position - startPosition + 1
+	return l.createToken(token.TEMPLATE_STRING, literal, startLine, startColumn, startPosition, length)
 }
 
 // handleSlashToken handles slash tokens (comments or illegal)
@@ -311,6 +320,18 @@ func (l *Lexer) readMultiLineComment() string {
 		l.readChar()
 	}
 
+	return l.input[position:l.position]
+}
+
+// readTemplateString reads a backtick-quoted template string
+func (l *Lexer) readTemplateString() string {
+	position := l.position + 1 // Skip opening backtick
+	for {
+		l.readChar()
+		if l.ch == '`' || l.ch == 0 {
+			break
+		}
+	}
 	return l.input[position:l.position]
 }
 

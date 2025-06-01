@@ -10,9 +10,10 @@ const (
 	COMMENT
 
 	// Literals
-	IDENT  // identifiers like "app_version"
-	STRING // "hello" or """multiline"""
-	NUMBER // 123, -456, 78.9
+	IDENT           // identifiers like "app_version"
+	STRING          // "hello" or """multiline"""
+	NUMBER          // 123, -456, 78.9
+	TEMPLATE_STRING // backtick-quoted string with interpolation
 
 	// Keywords
 	TRUE
@@ -35,9 +36,10 @@ const (
 	RBRACKET // ]
 
 	// Special symbols
-	AT   // @ (directives)
-	HASH // # (tables)
-	DOT  // . (namespace separator)
+	AT       // @ (directives)
+	HASH     // # (tables)
+	DOT      // . (namespace separator)
+	BACKTICK // `
 )
 
 // Token represents a single token with enhanced position tracking
@@ -97,6 +99,8 @@ func (t TokenType) String() string {
 		return "#"
 	case DOT:
 		return "."
+	case BACKTICK:
+		return "`"
 	default:
 		return "UNKNOWN"
 	}

@@ -3,10 +3,18 @@ package analyzer
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 
 	"github.com/tomdoesdev/brace/internal/ast"
 )
+
+// Supported BRACE versions
+var supportedVersions = map[string]bool{
+	"0.0.1": true,
+	"1.0.0": true,
+	// Add new versions here as they're released
+}
 
 // Analyzer performs semantic analysis on the AST
 // This includes processing directives and resolving constant references
@@ -25,7 +33,25 @@ func New() *Analyzer {
 
 // Analyze processes the AST and resolves all directives and references
 func (a *Analyzer) Analyze(program *ast.Program) error {
-	// First pass: process all directives to build symbol tables
+	// Validate that we have statements
+	if len(program.Statements) == 0 {
+		return fmt.Errorf("empty BRACE program")
+	}
+
+	// First statement must be @brace directive (parser should have enforced this)
+	firstStmt := program.Statements[0]
+	braceDirective, ok := firstStmt.(*ast.DirectiveStatement)
+	if !ok || braceDirective.Name != "brace" {
+		return fmt.Errorf("first statement must be @brace directive")
+	}
+
+	// Validate @brace version
+	err := a.validateBraceVersion(braceDirective)
+	if err != nil {
+		return err
+	}
+
+	// Process all directives to build symbol tables
 	for _, stmt := range program.Statements {
 		if directive, ok := stmt.(*ast.DirectiveStatement); ok {
 			err := a.processDirective(directive)
@@ -35,7 +61,7 @@ func (a *Analyzer) Analyze(program *ast.Program) error {
 		}
 	}
 
-	// Second pass: resolve all references
+	// Resolve all references
 	for _, stmt := range program.Statements {
 		a.resolveReferences(stmt)
 	}
@@ -47,20 +73,46 @@ func (a *Analyzer) Analyze(program *ast.Program) error {
 	return nil
 }
 
+// validateBraceVersion validates the @brace directive version
+func (a *Analyzer) validateBraceVersion(directive *ast.DirectiveStatement) error {
+	if len(directive.Parameters) != 1 {
+		return fmt.Errorf("@brace directive requires exactly one version parameter")
+	}
+
+	versionLiteral, ok := directive.Parameters[0].(*ast.StringLiteral)
+	if !ok {
+		return fmt.Errorf("@brace version must be a string literal")
+	}
+
+	version := versionLiteral.Value
+	if !supportedVersions[version] {
+		return fmt.Errorf("unsupported BRACE version: %s (supported versions: %v)",
+			version, getSupportedVersionsList())
+	}
+
+	return nil
+}
+
+// getSupportedVersionsList returns a sorted list of supported versions
+func getSupportedVersionsList() []string {
+	versions := make([]string, 0, len(supportedVersions))
+	for version := range supportedVersions {
+		versions = append(versions, version)
+	}
+	sort.Strings(versions)
+	return versions
+}
+
 // processDirective handles directive execution
 func (a *Analyzer) processDirective(directive *ast.DirectiveStatement) error {
 	switch directive.Name {
+	case "brace":
+		// Already validated in validateBraceVersion
+		return nil
 	case "const":
 		return a.processConstDirective(directive)
 	case "env":
 		// env directives are processed during reference resolution
-		return nil
-	case "brace":
-		// Version directive - validate version
-		if len(directive.Parameters) != 1 {
-			return fmt.Errorf("@brace directive expects exactly one parameter")
-		}
-		// For now, just accept any version string
 		return nil
 	default:
 		return fmt.Errorf("unknown directive: %s", directive.Name)
@@ -159,6 +211,13 @@ func (a *Analyzer) resolveReferences(node ast.Node) {
 	case *ast.EnvDirective:
 		// Resolve environment directives
 		a.resolveEnvDirective(n)
+	case *ast.TemplateStringLiteral:
+		// Resolve references within template strings
+		for _, part := range n.Parts {
+			if !part.IsLiteral && part.Expr != nil {
+				a.resolveReferences(part.Expr)
+			}
+		}
 	}
 }
 
